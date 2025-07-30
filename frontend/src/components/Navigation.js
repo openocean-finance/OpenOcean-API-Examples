@@ -30,6 +30,22 @@ const Navigation = () => {
           </li>
           <li className="nav-item">
             <Link
+              to="/swap-sol"
+              className={`nav-link ${isActive('/swap-sol') ? 'active' : ''}`}
+            >
+              Swap Solana
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
+              to="/swap-gasless"
+              className={`nav-link ${isActive('/swap-gasless') ? 'active' : ''}`}
+            >
+              Swap Gasless
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link
               to="/limit-order"
               className={`nav-link ${isActive('/limit-order') ? 'active' : ''}`}
             >

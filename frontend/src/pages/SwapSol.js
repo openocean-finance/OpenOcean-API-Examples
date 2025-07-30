@@ -1,14 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   supportedChains,
-  switchToSupportedChain,
-  getCurrentChainId,
-  isChainSupported
 } from '../utils/chainUtils';
 import './Pages.css';
 import axios from 'axios';
-import { BigNumber } from 'bignumber.js';
-import { ethers } from 'ethers';
+import { VersionedTransaction, Connection, Transaction } from '@solana/web3.js';
 
 /**
  * Swap Component - Handles token swapping functionality
@@ -18,19 +14,19 @@ const Swap = () => {
 
   // Token state for input and output tokens
   const [inToken, setInToken] = useState({
-    address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
-    symbol: 'USDC',
-    decimals: 6
+    address: 'So11111111111111111111111111111111111111112',
+    symbol: 'SOL',
+    decimals: 9
   });
   const [outToken, setOutToken] = useState({
-    address: '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
-    symbol: 'USDT',
+    address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    symbol: 'USDC',
     decimals: 6
   });
   
   // Ethereum provider and transaction state
   const [provider, setProvider] = useState(null);
-  const [fromAmount, setFromAmount] = useState('0.1');
+  const [fromAmount, setFromAmount] = useState('0.001');
   const [toAmount, setToAmount] = useState('');
   const [slippage, setSlippage] = useState(0.5);
   const [isLoading, setIsLoading] = useState(false);
@@ -55,8 +51,8 @@ const Swap = () => {
 
   // Chain configuration
   const chain = {
-    chainId: 8453,
-    chainName: 'base',
+    chainId: 'solana',
+    chainName: 'solana',
   }
   
   // Initialize component on mount
@@ -70,10 +66,10 @@ const Swap = () => {
    * Check if wallet is already connected on component mount
    */
   const checkWalletConnection = async () => {
-    if (typeof window.ethereum !== 'undefined') {
+    if (typeof window.solana !== 'undefined' && window.solana.isPhantom) {
       try {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        if (accounts.length > 0) {
+        const response = await window.solana.connect({ onlyIfTrusted: true });
+        if (response.publicKey) {
           await connectWallet();
         }
       } catch (error) {
@@ -83,78 +79,43 @@ const Swap = () => {
   };
 
   /**
-   * Connect to MetaMask wallet and handle chain switching
+   * Connect to Phantom wallet
    */
   const connectWallet = async () => {
     setIsLoading(true);
     try {
-      if (typeof window.ethereum === 'undefined') {
-        alert('Please install MetaMask!');
+      if (typeof window.solana === 'undefined' || !window.solana.isPhantom) {
+        alert('Please install Phantom wallet!');
         return;
       }
 
-      await window.ethereum.request({
-        method: 'eth_requestAccounts'
-      });
+      const response = await window.solana.connect();
+      const publicKey = response.publicKey.toString();
 
-      // Get current chain ID
-      const chainId = await getCurrentChainId();
-      setCurrentChainId(chainId);
+      // Set Solana connection
+      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
 
-      // Check if current chain is supported
-      if (chainId != chain.chainId) {
-        const shouldSwitch = window.confirm(
-          `Current chain (${chainId}) is not supported. Would you like to switch to Base?`
-        );
-
-        if (shouldSwitch) {
-          const switched = await switchToSupportedChain(chain.chainId);
-          if (!switched) {
-            alert('Failed to switch to supported chain. Please switch manually.');
-            setIsLoading(false);
-            return;
-          }
-          // Update chain ID after switch
-          const newChainId = await getCurrentChainId();
-          setCurrentChainId(newChainId);
-        } else {
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-      const address = await signer.getAddress();
-
-      const feeData = await provider.getFeeData();
-      const gasPrice = feeData.gasPrice;
-      setGasPrice(Number(gasPrice));
-      setProvider(provider);
-      setWalletAccount(address);
+      setProvider(connection);
+      setWalletAccount(publicKey);
       setIsWalletConnected(true);
+      setCurrentChainId('solana');
 
-      console.log('Wallet connected:', address, 'on chain:', chainId);
+      console.log('Phantom wallet connected:', publicKey);
 
       // Listen for account changes
-      window.ethereum.on('accountsChanged', (newAccounts) => {
-        if (newAccounts.length > 0) {
-          connectWallet();
+      window.solana.on('accountChanged', (publicKey) => {
+        if (publicKey) {
+          setWalletAccount(publicKey.toString());
         } else {
           disconnectWallet();
         }
       });
 
-      // Listen for chain changes
-      window.ethereum.on('chainChanged', (chainId) => {
-        const newChainId = parseInt(chainId, 16);
-        setCurrentChainId(newChainId);
-
-        if (!isChainSupported(newChainId)) {
-          alert(`Chain ${newChainId} is not supported. Please switch to a supported chain.`);
-          setIsWalletConnected(false);
-        }
+      // Listen for disconnect
+      window.solana.on('disconnect', () => {
+        disconnectWallet();
       });
+
     } catch (error) {
       console.error('Error connecting wallet:', error);
       alert('Failed to connect wallet: ' + error.message);
@@ -167,18 +128,15 @@ const Swap = () => {
    * Disconnect wallet and reset state
    */
   const disconnectWallet = () => {
+    if (window.solana && window.solana.isPhantom) {
+      window.solana.disconnect();
+    }
     setWalletAccount('');
     setIsWalletConnected(false);
     setCurrentChainId(null);
-    console.log('Wallet disconnected');
+    setProvider(null);
+    console.log('Phantom wallet disconnected');
   };
-
-  /**
-   * Check if token is native (ETH/WETH)
-   */
-  const isNativeToken = (tokenAddress, chainId) => {
-    return tokenAddress === '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-  }
 
   /**
    * Execute token swap transaction
@@ -199,51 +157,50 @@ const Swap = () => {
         outTokenAddress: outToken.address,
         amountDecimals: fromAmountDecimals,
         slippage: slippage * 100,
-        gasPrice: gasPrice,
         account: walletAccount,
+        gasPrice: gasPrice
       }
 
       // Get swap quote from OpenOcean API
       let url = `https://open-api.openocean.finance/v4/${chain.chainId}/swap?${Object.entries(params).map(([key, value]) => `${key}=${value}`).join('&')}`
       let res = await axios.get(url);
-
-      const { inToken, inAmount, data, to, gasPrice: swapGasPrice } = res.data.data;
-      let swapParams = {
-        from: walletAccount,
-        to,
-        data,
-        gasPrice: swapGasPrice
-      };
-
-      // Handle token approval for non-native tokens
-      if (!isNativeToken(inToken.address, chain.chainId)) {
-        let approveAmount = fromAmountDecimals;
-        // approveAmount = BigNumber('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF').toFixed(0);
-        await checkTokenApprove(inToken.address, to, fromAmountDecimals, gasPrice, approveAmount);
-      } else {
-        swapParams.value = inAmount;
-      }
-
-      console.log('sendEthTransaction swapParams', JSON.stringify(swapParams));
-
-      // Validate transaction parameters
-      if (!swapParams.to || !swapParams.data) {
+      debugger
+      const { dexId, data } = res.data.data;
+      // For Solana, we need to handle transaction data
+      if (!data) {
         throw new Error('Invalid transaction parameters');
       }
 
-      // Execute the swap transaction
+      // Handle Solana transaction
       try {
-        const signer = await provider.getSigner();
-        const tx = await signer.sendTransaction(swapParams);
-        const receipt = await tx.wait();
+        let transaction = ''
+        if (dexId == 6 || dexId == 7) {
+          transaction = VersionedTransaction.deserialize(
+            Buffer.from(data, 'hex')
+          );
+        } else {
+          transaction = Transaction.from(
+            Buffer.from(data, "hex")
+          );
+        }
 
-        console.log('Transaction successful:', receipt);
-        alert('Swap completed successfully!');
+        // Sign and send transaction
+        const signedTransaction = await window.solana.signTransaction(transaction);
+        const signature = await provider.sendRawTransaction(signedTransaction.serialize({
+          verifySignatures: false,
+          requireAllSignatures: false
+        }));
+
+        // Wait for confirmation
+        const confirmation = await provider.confirmTransaction(signature, 'confirmed');
+
+        console.log('Swap successful:', signature);
+        alert('Swap completed!');
         setFromAmount('');
         setToAmount('');
       } catch (txError) {
-        console.error('Transaction failed:', txError);
-        alert('Transaction failed: ' + txError.message);
+        console.error('Swap failed:', txError);
+        alert('Swap failed: ' + txError.message);
       }
 
     } catch (error) {
@@ -263,7 +220,8 @@ const Swap = () => {
     }
     setFromAmount(value);
     setToAmount('');
-    if (fromAmount) {
+    // 使用当前输入的值而不是状态中的旧值
+    if (value) {
       getQuote(value);
     }
   };
@@ -276,7 +234,9 @@ const Swap = () => {
     setOutToken(inToken);
     // setFromAmount(toAmount);
     setToAmount('');
-    getQuote();
+    if (fromAmount) {
+      getQuote();
+    }
   };
 
   /**
@@ -330,118 +290,6 @@ const Swap = () => {
     getQuote();
   }
 
-  /**
-   * Check and handle token approval for swap contract
-   */
-  const checkTokenApprove = async (
-    tokenAddress,
-    contractAddress,
-    amount,
-    gasPrice,
-    approveAmount
-  ) => {
-    // Get current allowance
-    const allowance = await getTokenAllowance(tokenAddress, contractAddress);
-
-    if (BigNumber(allowance).comparedTo(amount) < 0) {
-      return await approveToken(
-        tokenAddress,
-        contractAddress,
-        approveAmount || amount,
-        gasPrice
-      );
-    }
-    return true;
-  };
-
-  /**
-   * Get token allowance for a specific contract
-   */
-  const getTokenAllowance = async (tokenAddress, contractAddress) => {
-    try {
-      // ERC20 ABI for allowance function
-      const erc20Abi = [
-        {
-          "constant": true,
-          "inputs": [
-            {
-              "name": "_owner",
-              "type": "address"
-            },
-            {
-              "name": "_spender",
-              "type": "address"
-            }
-          ],
-          "name": "allowance",
-          "outputs": [
-            {
-              "name": "",
-              "type": "uint256"
-            }
-          ],
-          "type": "function"
-        }
-      ];
-      const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, provider);
-      const allowance = await tokenContract.allowance(walletAccount, contractAddress);
-      return allowance
-    } catch (error) {
-      console.error('Error checking token approval:', error);
-      return 0;
-    }
-  };
-
-  /**
-   * Approve token spending for swap contract
-   */
-  const approveToken = async (tokenAddress, contractAddress, maxAmount, gasPrice) => {
-    try {
-      // ERC20 ABI for approve function
-      const erc20Abi = [
-        {
-          "constant": false,
-          "inputs": [
-            {
-              "name": "_spender",
-              "type": "address"
-            },
-            {
-              "name": "_value",
-              "type": "uint256"
-            }
-          ],
-          "name": "approve",
-          "outputs": [
-            {
-              "name": "",
-              "type": "bool"
-            }
-          ],
-          "type": "function"
-        }
-      ];
-
-      const signer = await provider.getSigner();
-
-      const tokenContract = new ethers.Contract(tokenAddress, erc20Abi, signer);
-
-      const tx = await tokenContract.approve(contractAddress, maxAmount, {
-        gasPrice: gasPrice
-      });
-
-      const receipt = await tx.wait(); // Wait for transaction confirmation
-
-      console.log('Approval successful:', receipt);
-      alert('Token approved successfully!');
-      return true;
-    } catch (error) {
-      console.error('Error approving token:', error);
-      alert('Failed to approve token: ' + error.message);
-      return false;
-    }
-  };
-
   return (
     <div className="page">
       <h1>Swap</h1>
@@ -452,13 +300,13 @@ const Swap = () => {
         <div className="wallet-section">
           {!isWalletConnected ? (
             <div className="wallet-notice">
-              <p>⚠️ Please connect your MetaMask wallet to use Swap functionality</p>
+              <p>⚠️ Please connect your Phantom wallet to use Swap functionality</p>
               <button
                 className="connect-button"
                 onClick={connectWallet}
                 disabled={isLoading}
               >
-                {isLoading ? 'Connecting...' : 'Connect MetaMask'}
+                {isLoading ? 'Connecting...' : 'Connect Phantom'}
               </button>
             </div>
           ) : (

@@ -8,13 +8,21 @@ import {
 import './Pages.css';
 import axios from 'axios';
 import { BigNumber } from 'bignumber.js';
-import { ethers } from 'ethers';
-
+import { ethers, Interface } from 'ethers';
+import { SignatureTransfer } from "@uniswap/permit2-sdk";
+import { Permit2Abi } from '../utils/Permit2';
+import { OpenSwapPermitAbi } from '../utils/OpenSwapPermitAbi';
 /**
  * Swap Component - Handles token swapping functionality
  * Allows users to exchange tokens using OpenOcean API
  */
 const Swap = () => {
+  const baseUrl = 'https://open-api.openocean.finance/v4'
+  // const baseUrl = 'https://openapi-test.openocean.finance/v4'
+
+
+  // Supported chains for gasless swaps
+  const gaslessChain = ['arbitrum', 'bsc', 'sonic', 'base', 'sei', 'eth', 'hyperevm', 'avax', 'uni']
 
   // Token state for input and output tokens
   const [inToken, setInToken] = useState({
@@ -27,7 +35,7 @@ const Swap = () => {
     symbol: 'USDT',
     decimals: 6
   });
-  
+
   // Ethereum provider and transaction state
   const [provider, setProvider] = useState(null);
   const [fromAmount, setFromAmount] = useState('0.1');
@@ -35,7 +43,7 @@ const Swap = () => {
   const [slippage, setSlippage] = useState(0.5);
   const [isLoading, setIsLoading] = useState(false);
   const [gasPrice, setGasPrice] = useState(10000);
-  
+
   // Quote data from API
   const [quote, setQuote] = useState({
     inAmount: 0,
@@ -57,8 +65,9 @@ const Swap = () => {
   const chain = {
     chainId: 8453,
     chainName: 'base',
+    chainCode: 'base' // Add chainCode for gasless chain validation
   }
-  
+
   // Initialize component on mount
   useEffect(() => {
     checkWalletConnection();
@@ -189,6 +198,10 @@ const Swap = () => {
       alert('Please connect your wallet first!');
       return;
     }
+    if (!getIsGasLessChain(chain.chainCode)) {
+      alert('This chain is not supported for gasless swaps');
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -204,48 +217,61 @@ const Swap = () => {
       }
 
       // Get swap quote from OpenOcean API
-      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/swap?${Object.entries(params).map(([key, value]) => `${key}=${value}`).join('&')}`
+      let url = `${baseUrl}/gasless/${chain.chainId}/quote?${Object.entries(params).map(([key, value]) => `${key}=${value}`).join('&')}`
       let res = await axios.get(url);
 
-      const { inToken, inAmount, data, to, gasPrice: swapGasPrice } = res.data.data;
+      // Destructure API response data, rename inToken to avoid conflict with component state
+      const { inAmount, data, to, fees, flags, hash } = res.data.data;
       let swapParams = {
         from: walletAccount,
         to,
         data,
-        gasPrice: swapGasPrice
+        gasPrice: gasPrice
       };
+
+      const permit2Address = await getPermit2ContractAddress(chain.chainCode);
 
       // Handle token approval for non-native tokens
       if (!isNativeToken(inToken.address, chain.chainId)) {
-        let approveAmount = fromAmountDecimals;
-        // approveAmount = BigNumber('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF').toFixed(0);
-        await checkTokenApprove(inToken.address, to, fromAmountDecimals, gasPrice, approveAmount);
+        // let approveAmount = fromAmountDecimals;
+        let approveAmount = BigNumber('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF').toFixed(0);
+        await checkTokenApprove(inToken.address, permit2Address, fromAmountDecimals, gasPrice, approveAmount);
       } else {
         swapParams.value = inAmount;
       }
-
-      console.log('sendEthTransaction swapParams', JSON.stringify(swapParams));
-
-      // Validate transaction parameters
-      if (!swapParams.to || !swapParams.data) {
-        throw new Error('Invalid transaction parameters');
+      const permitSign = await setPermit2Signer(inAmount, inToken.address, permit2Address);
+      if (!permitSign) {
+        throw new Error('User rejected the request.');
       }
+      const { permit, nonce, deadline } = permitSign || {};
 
-      // Execute the swap transaction
-      try {
-        const signer = await provider.getSigner();
-        const tx = await signer.sendTransaction(swapParams);
-        const receipt = await tx.wait();
-
-        console.log('Transaction successful:', receipt);
+      let gasLessData = {
+        from: walletAccount,
+        to: to,
+        data: data,
+        amountDecimals: params.amountDecimals,
+        feeAmount1: fees[0] ? (+fees[0].inFeeAmount * (10 ** fees[0].decimals)) : 0,
+        feeAmount2: fees[1] ? (+fees[1].inFeeAmount * (10 ** fees[1].decimals)) : 0,
+        flag: flags,
+        gasPriceDecimals: gasPrice,
+        deadline: deadline,
+        inToken: inToken.address,
+        outToken: outToken.address,
+        nonce: Number(nonce),
+        permit: permit,
+        // hash: hash,
+        // usd_valuation: Number((Number(params.amountDecimals) * Number(inToken.usd)).toFixed(4))
+      }
+      let resGasless = await axios.post(`${baseUrl}/gasless/${chain.chainId}/swap`, gasLessData)
+      if (!resGasless.data.orderHash) throw new Error(resGasless.msg || resGasless.err || 'Transaction error')
+      let hashSwap = await getGasHashTimeout(resGasless.data.orderHash, 0)
+      if (hashSwap) {
+        console.log('Transaction successful:', hashSwap);
         alert('Swap completed successfully!');
+
         setFromAmount('');
         setToAmount('');
-      } catch (txError) {
-        console.error('Transaction failed:', txError);
-        alert('Transaction failed: ' + txError.message);
       }
-
     } catch (error) {
       console.error('Error executing swap:', error);
       alert('Failed to execute swap: ' + error.message);
@@ -254,6 +280,115 @@ const Swap = () => {
     }
   };
 
+  /**
+   * Poll for transaction hash with timeout
+   * @param {string} orderHash - Order hash from gasless swap
+   * @param {number} i - Retry counter
+   * @returns {string|null} Transaction hash or null if timeout
+   */
+  const getGasHashTimeout = async (orderHash, i) => {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      let res = await axios.get(`${baseUrl}/gasless/${chain.chainId}/order?orderHash=${orderHash}`)
+      if (!res.data.data) throw new Error(res.data.msg || 'No data received')
+      if (res.data.data.err) throw new Error(res.data.data.err)
+      if (res.data.data.hash) return res.data.data.hash
+      if (i > 30) return null // Timeout after 60 seconds (30 * 2s)
+      return getGasHashTimeout(orderHash, i + 1)
+    } catch (error) {
+      console.error('Error polling transaction hash:', error);
+      if (i > 30) return null
+      return getGasHashTimeout(orderHash, i + 1)
+    }
+  }
+
+  /**
+   * Check if current chain supports gasless swaps
+   */
+  const getIsGasLessChain = (chainCode) => {
+    return gaslessChain.indexOf(chainCode) !== -1
+  }
+
+  /**
+   * Get Permit2 contract address for the specified chain
+   */
+  const getPermit2ContractAddress = async (chainCode) => {
+    const contract = {
+      "eth": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "arbitrum": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+      "base": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    }[chainCode] || "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    return contract
+  }
+
+  /**
+   * Create and sign Permit2 signature for gasless swap
+   * @param {string} amount - Amount to permit
+   * @param {string} token - Token address
+   * @param {string} permit2Address - Permit2 contract address
+   * @returns {Object|null} Permit data or null if failed
+   */
+  const setPermit2Signer = async (amount, token, permit2Address) => {
+    try {
+      // OpenOcean gasless spender address
+      let spender = '0xB1DD8E9ebbF5F150B75642D1653dF0dacd0bfF47'
+      let deadline = Math.floor(Date.now() / 1000) + 60 * 30; // 30 minutes from now
+      let nonce = await getPermit2Nonce(spender);
+
+      const permitSingle = {
+        permitted: {
+          token: token,
+          amount: amount,
+        },
+        spender,
+        nonce,
+        deadline: deadline,
+      };
+
+      const { domain, types, values } = SignatureTransfer.getPermitData(
+        permitSingle,
+        permit2Address,
+        chain.chainId
+      );
+
+      let signer = await provider.getSigner();
+      const signature = await signer.signTypedData(domain, types, values);
+
+      const permitTransferfromData = [
+        [[token, amount], nonce, deadline],
+        [spender, amount],
+        walletAccount,
+        signature,
+      ];
+
+      const PERMIT2_INTERFACE = new Interface(Permit2Abi);
+      const data = PERMIT2_INTERFACE.encodeFunctionData(
+        "0x30f28b7a", // permitTransferFrom function selector
+        permitTransferfromData
+      );
+
+      return { permit: data, nonce, deadline, spender };
+    } catch (e) {
+      console.error('Error in setPermit2Signer:', e);
+      return null;
+    }
+  };
+
+  /**
+   * Get next nonce for Permit2 signature
+   * @param {string} spender - Spender address
+   * @returns {number} Next nonce value
+   */
+  const getPermit2Nonce = async (spender) => {
+    try {
+      const tokenContract = new ethers.Contract(spender, OpenSwapPermitAbi, provider);
+      const nonce = await tokenContract.permit2NextNonce(walletAccount)
+      return nonce
+    } catch (error) {
+      console.error('Error getting Permit2 nonce:', error);
+      throw error;
+    }
+  };
   /**
    * Handle input amount changes and trigger quote update
    */
@@ -291,7 +426,7 @@ const Swap = () => {
    * Fetch available tokens from OpenOcean API
    */
   const getTokens = async () => {
-    let url = `https://open-api.openocean.finance/v4/${chain.chainId}/tokenList`
+    let url = `${baseUrl}/${chain.chainId}/tokenList`
     const { data } = await axios.get(url);
     console.log(data.data);
     setTokens(data.data);
@@ -304,7 +439,7 @@ const Swap = () => {
     if (!fromAmount) return;
     setIsLoading(true);
     try {
-      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage * 100}&gasPrice=${gasPrice}`
+      let url = `${baseUrl}/gasless/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage * 100}&gasPrice=${gasPrice}`
       const { data } = await axios.get(url);
       console.log(data);
       setQuote(data.data);
@@ -494,7 +629,7 @@ const Swap = () => {
                 value={fromAmount}
                 onChange={(e) => handleFromAmountChange(e.target.value)}
                 disabled={!isWalletConnected}
-                
+
               />
               <select
                 value={inToken.address}
