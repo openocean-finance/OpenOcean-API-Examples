@@ -15,6 +15,12 @@ import './Pages.css';
  * Allows users to create and manage limit orders for token trading
  */
 const LimitOrder = () => {
+  const baseUrl = 'https://open-api.openocean.finance';
+  const limitOrderChains = ["bsc","eth","polygon","avax","fantom","arbitrum","optimism",
+    "moonriver","harmony","heco","okex","xdai","cronos","zksync","linea","base",
+    "sonic","bera","sei"
+  ]
+
   // Wallet connection state
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [walletAccount, setWalletAccount] = useState('');
@@ -195,7 +201,7 @@ const LimitOrder = () => {
         alert('Please connect wallet first')
         return
       }
-      
+
       const gasPrice = await getGasPrice();
       const providerParams = {
         provider: provider,
@@ -203,7 +209,7 @@ const LimitOrder = () => {
         account: walletAccount,
         chainId: chain.chainId
       }
-      
+
       // Prepare order parameters
       const params = {
         makerTokenAddress: inToken.address,
@@ -215,7 +221,7 @@ const LimitOrder = () => {
         gasPrice: gasPrice,
         expire: expireTime,
       }
-      
+
       // Create limit order using SDK
       let order = await openoceanLimitOrderSdk.createLimitOrder(
         providerParams,
@@ -224,7 +230,7 @@ const LimitOrder = () => {
 
       // Submit order to OpenOcean API
       const result = await axios.post(
-        `https://open-api.openocean.finance/v1/${chain.chainId}/limit-order`,
+        `${baseUrl}/v1/${chain.chainId}/limit-order`,
         order,
         {
           headers: { 'Content-Type': 'application/json' },
@@ -253,15 +259,15 @@ const LimitOrder = () => {
   const cancelOrder = async (order) => {
     try {
       const { orderHash } = order;
-      
+
       // Cancel order through API
       const { data } = await axios.post(
-        `https://open-api.openocean.finance/v1/${chain.chainId}/limit-order/cancelLimitOrder`,
+        `${baseUrl}/v1/${chain.chainId}/limit-order/cancelLimitOrder`,
         { orderHash }
       );
-      
+
       const { status } = (data && data.data) || {};
-      
+
       // If order is still active, cancel on blockchain
       if (status && !(status === 3 || status === 4)) {
         const gasPrice = await getGasPrice();
@@ -278,7 +284,7 @@ const LimitOrder = () => {
           }
         );
       }
-      
+
       await getLimitOrder();
       alert('Order cancelled successfully!');
     } catch (error) {
@@ -291,7 +297,7 @@ const LimitOrder = () => {
    * Fetch user's limit orders from OpenOcean API
    */
   const getLimitOrder = async (account) => {
-    let url = `https://open-api.openocean.finance/v1/${chain.chainId}/limit-order/address/${walletAccount || account}?page=1&limit=100&statuses=[1,2,5]&sortBy=createDateTime&exclude=0`
+    let url = `${baseUrl}/v1/${chain.chainId}/limit-order/address/${walletAccount || account}?page=1&limit=100&statuses=[1,2,5]&sortBy=createDateTime&exclude=0`
     const res = await axios.get(url);
     setOrders(res.data.data)
   }

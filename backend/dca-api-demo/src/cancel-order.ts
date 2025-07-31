@@ -82,10 +82,22 @@ export async function cancelEthers(chainId, order) {
       signer: ethersSigner
     };
 
+    const signature = await openoceanLimitOrderSdk.cancelOrderSignature(
+      {
+        provider: ethersProvider,
+        chainKey: 'base',
+        account: ethersSigner.address,
+        chainId: chainId
+      },
+      {
+        orderHash: order.orderHash
+      }
+    );
+
     // Try to cancel via OpenOcean API
     const result = await axios.post(
       `${BaseUrl}/v1/${chainId}/dca/cancel`,
-      { orderHash: order.orderHash }
+      { orderHash: order.orderHash, signature }
     );
 
     console.log('Ethers.js cancel order result:', result.data.data);

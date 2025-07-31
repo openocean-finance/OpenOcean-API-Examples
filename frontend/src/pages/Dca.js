@@ -15,6 +15,9 @@ import './Pages.css';
  * Allows users to create automated recurring buy orders for token accumulation
  */
 const LimitOrder = () => {
+  const baseUrl = 'https://open-api.openocean.finance';
+  const dcaChains = ["eth","bsc","base","sonic","bera","arbitrum","hyperevm"]
+
   // Wallet connection state
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [walletAccount, setWalletAccount] = useState('');
@@ -23,8 +26,8 @@ const LimitOrder = () => {
   const [currentChainId, setCurrentChainId] = useState(null);
 
   // DCA strategy parameters
-  const [makerAmount, setMakerAmount] = useState(10); // Total allocation amount
-  const [everyUnit, setEveryUnit] = useState(60) // Time unit (seconds)
+  const [makerAmount, setMakerAmount] = useState(20); // Total allocation amount
+  const [everyUnit, setEveryUnit] = useState(60 * 60) // Time unit (seconds)
   const [time, setTime] = useState(1) // Time interval value
   const [frequency, setFrequency] = useState(2); // Number of trades to execute
   const [minPrice, setMinPrice] = useState(null); // Minimum price limit (optional)
@@ -209,7 +212,7 @@ const LimitOrder = () => {
         alert('Please connect wallet first')
         return
       }
-      
+
       const gasPrice = await getGasPrice();
       const providerParams = {
         provider: provider,
@@ -218,7 +221,7 @@ const LimitOrder = () => {
         chainId: chain.chainId,
         mode: 'Dca' // Specify DCA mode
       }
-      
+
       // Prepare DCA parameters
       const params = {
         makerTokenAddress: inToken.address,
@@ -227,16 +230,14 @@ const LimitOrder = () => {
         takerTokenDecimals: outToken.decimals,
         makerAmount: makerAmount * (10 ** inToken.decimals) + '',
         takerAmount: 1, // Default taker amount for DCA
-        gasPrice: gasPrice,
-        expire: '1H',
+        gasPrice: gasPrice
       }
-      
+
       // Create limit order using SDK
       let orderData = await openoceanLimitOrderSdk.createLimitOrder(
         providerParams,
         params
       );
-
       // Prepare DCA order with additional parameters
       let order = {
         ...orderData,
@@ -250,7 +251,7 @@ const LimitOrder = () => {
 
       // Submit DCA order to OpenOcean API
       const { data } = await axios.post(
-        `https://open-api.openocean.finance/v1/${chain.chainId}/dca/swap`,
+        `${baseUrl}/v1/${chain.chainId}/dca/swap`,
         order,
         {
           headers: { 'Content-Type': 'application/json' },
@@ -283,33 +284,29 @@ const LimitOrder = () => {
   const cancelOrder = async (order) => {
     try {
       const { orderHash } = order;
-      
+
+      const signature = await openoceanLimitOrderSdk.cancelOrderSignature(
+        {
+          provider: provider,
+          chainKey: chain.chainName,
+          account: walletAccount,
+          chainId: chain.chainId
+        },
+        {
+          orderHash
+        }
+      );
       // Cancel order through API
       const { data } = await axios.post(
-        `https://open-api.openocean.finance/v1/${chain.chainId}/dca/cancel`,
-        { orderHash }
+        `${baseUrl}/v1/${chain.chainId}/dca/cancel`,
+        {
+          orderHash,
+          signature
+        }
       );
-      
-      const { status } = (data && data.data) || {};
-      
-      // If order is still active, cancel on blockchain
-      if (status && !(status === 3 || status === 4)) {
-        const gasPrice = await getGasPrice();
-        await openoceanLimitOrderSdk.cancelLimitOrder(
-          {
-            provider: provider,
-            chainKey: chain.chainName,
-            account: walletAccount,
-            chainId: chain.chainId,
-            mode: 'Dca' // Specify DCA mode
-          },
-          {
-            orderData: order.data,
-            gasPrice,
-          }
-        );
+      if (data.code !== 200) {
+        throw new Error(data.error);
       }
-      
       await getLimitOrder();
       alert('Order cancelled successfully!');
     } catch (error) {
@@ -322,7 +319,7 @@ const LimitOrder = () => {
    * Fetch user's DCA orders from OpenOcean API
    */
   const getLimitOrder = async (account) => {
-    let url = `https://open-api.openocean.finance/v1/${chain.chainId}/dca/address/${walletAccount || account}?page=1&limit=100&statuses=[1,2,5]&sortBy=createDateTime&exclude=0`
+    let url = `${baseUrl}/v1/${chain.chainId}/dca/address/${walletAccount || account}?page=1&limit=100&statuses=[1,2,5]&sortBy=createDateTime&exclude=0`
     const res = await axios.get(url);
     setOrders(res.data.data)
   }
