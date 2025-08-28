@@ -1,6 +1,7 @@
-# OpenOcean API Examples
+# OpenOcean Frontend Examples
 
-This repository contains comprehensive examples of how to integrate OpenOcean APIs into both frontend and backend applications.
+This repository includes examples of the OpenOcean frontend. You can view details in each subdirectory.
+
 
 ## 📁 Project Structure
 
