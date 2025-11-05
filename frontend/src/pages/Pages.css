@@ -5,6 +5,126 @@
   background: #f8f9fa;
 }
 
+/* DCA Form Styles */
+.dca-form {
+  background: #f8f9fa;
+  border-radius: 15px;
+  padding: 2rem;
+  margin: 2rem 0;
+  border: 1px solid #e9ecef;
+}
+
+.form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #e9ecef;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.chain-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.chain-name {
+  font-size: 0.8rem;
+  color: #dc3545;
+  margin-left: 0.5rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.form-group-half {
+  width: 50%;
+}
+
+.interval-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.interval-value-input {
+  width: 60%;
+}
+
+.interval-unit-select {
+  width: 60%;
+}
+
+.price-limit-section {
+  margin-top: 1.5rem;
+}
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.price-limit-explanation {
+  font-size: 0.8rem;
+  color: #dc3545;
+  margin-top: 0.5rem;
+  text-align: left;
+  padding: 0.5rem;
+  background: #fff5f5;
+  border-radius: 5px;
+}
+
+.dca-button {
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+  margin-top: 1.5rem;
+}
+
+.dca-button:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+}
+
+.dca-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Additional DCA Form Elements */
+.amount-limit {
+  font-size: 0.8rem;
+  color: #dc3545;
+}
+
+.optional-label {
+  font-size: 0.8rem;
+  color: #dc3545;
+  margin-left: 6px;
+}
+
+.no-orders-hint {
+  font-size: 0.9rem;
+  margin-top: 10px;
+  color: #6c757d;
+}
+
 .page h1,
 .page h2 {
   color: #2c3e50;

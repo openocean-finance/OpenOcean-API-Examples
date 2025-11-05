@@ -156,7 +156,7 @@ const Swap = () => {
         inTokenAddress: inToken.address,
         outTokenAddress: outToken.address,
         amountDecimals: fromAmountDecimals,
-        slippage: slippage * 100,
+        slippage: slippage,
         account: walletAccount,
         gasPrice: gasPrice
       }
@@ -165,7 +165,7 @@ const Swap = () => {
       let url = `https://open-api.openocean.finance/v4/${chain.chainId}/swap?${Object.entries(params).map(([key, value]) => `${key}=${value}`).join('&')}`
       let res = await axios.get(url);
       debugger
-      const { dexId, data } = res.data.data;
+      const { data } = res.data.data;
       // For Solana, we need to handle transaction data
       if (!data) {
         throw new Error('Invalid transaction parameters');
@@ -174,7 +174,7 @@ const Swap = () => {
       // Handle Solana transaction
       try {
         let transaction = ''
-        if (dexId == 6 || dexId == 7) {
+        if (res.isVersioned) {
           transaction = VersionedTransaction.deserialize(
             Buffer.from(data, 'hex')
           );
@@ -264,7 +264,7 @@ const Swap = () => {
     if (!fromAmount) return;
     setIsLoading(true);
     try {
-      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage * 100}&gasPrice=${gasPrice}`
+      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage}&gasPrice=${gasPrice}`
       const { data } = await axios.get(url);
       console.log(data);
       setQuote(data.data);

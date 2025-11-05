@@ -198,7 +198,7 @@ const Swap = () => {
         inTokenAddress: inToken.address,
         outTokenAddress: outToken.address,
         amountDecimals: fromAmountDecimals,
-        slippage: slippage * 100,
+        slippage: slippage,
         gasPrice: gasPrice,
         account: walletAccount,
       }
@@ -304,7 +304,7 @@ const Swap = () => {
     if (!fromAmount) return;
     setIsLoading(true);
     try {
-      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage * 100}&gasPrice=${gasPrice}`
+      let url = `https://open-api.openocean.finance/v4/${chain.chainId}/quote?inTokenAddress=${inToken.address}&outTokenAddress=${outToken.address}&amountDecimals=${(value || fromAmount) * 10 ** inToken.decimals}&slippage=${slippage}&gasPrice=${gasPrice}`
       const { data } = await axios.get(url);
       console.log(data);
       setQuote(data.data);

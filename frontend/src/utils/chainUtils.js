@@ -1,4 +1,8 @@
-// Supported chains configuration
+
+/**
+ * Supported blockchain networks configuration
+ * Maps chain ID to network information
+ */
 export const supportedChains = {
   1: { name: 'Ethereum Mainnet', symbol: 'ETH' },
   137: { name: 'Polygon', symbol: 'MATIC' },
@@ -8,7 +12,10 @@ export const supportedChains = {
   8453: { name: 'Base', symbol: 'ETH' }
 };
 
-// Chain configuration for MetaMask
+/**
+ * Chain configuration for MetaMask wallet integration
+ * Contains RPC URLs, block explorer URLs, and native currency information
+ */
 export const chainConfigs = {
   1: {
     chainId: '0x1',
@@ -54,16 +61,21 @@ export const chainConfigs = {
   }
 };
 
-// Switch to a supported chain
+/**
+ * Switch to a supported blockchain network in MetaMask
+ * @param {number} targetChainId - The target chain ID to switch to
+ * @returns {Promise<boolean>} - True if successful, false otherwise
+ */
 export const switchToSupportedChain = async (targetChainId) => {
   try {
+    // Attempt to switch to the target chain
     await window.ethereum.request({
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: `0x${targetChainId.toString(16)}` }],
     });
     return true;
   } catch (switchError) {
-    // This error code indicates that the chain has not been added to MetaMask
+    // Error code 4902 indicates the chain has not been added to MetaMask
     if (switchError.code === 4902) {
       try {
         const chainInfo = chainConfigs[targetChainId];
@@ -71,7 +83,8 @@ export const switchToSupportedChain = async (targetChainId) => {
           console.error('Chain configuration not found for:', targetChainId);
           return false;
         }
-        
+
+        // Add the chain to MetaMask if it doesn't exist
         await window.ethereum.request({
           method: 'wallet_addEthereumChain',
           params: [chainInfo],
@@ -87,7 +100,10 @@ export const switchToSupportedChain = async (targetChainId) => {
   }
 };
 
-// Get current chain ID
+/**
+ * Get the current connected chain ID from MetaMask
+ * @returns {Promise<number|null>} - The current chain ID as a number, or null if error
+ */
 export const getCurrentChainId = async () => {
   try {
     const chainId = await window.ethereum.request({ method: 'eth_chainId' });
@@ -98,12 +114,20 @@ export const getCurrentChainId = async () => {
   }
 };
 
-// Check if chain is supported
+/**
+ * Check if a chain ID is supported by the application
+ * @param {number} chainId - The chain ID to check
+ * @returns {boolean} - True if supported, false otherwise
+ */
 export const isChainSupported = (chainId) => {
   return supportedChains.hasOwnProperty(chainId);
 };
 
-// Get chain info by ID
+/**
+ * Get chain information by chain ID
+ * @param {number} chainId - The chain ID to get info for
+ * @returns {Object|null} - Chain information object or null if not found
+ */
 export const getChainInfo = (chainId) => {
   return supportedChains[chainId] || null;
-}; 
+};
